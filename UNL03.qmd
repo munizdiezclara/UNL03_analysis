@@ -1,0 +1,303 @@
+---
+title: "UNL03"
+format: pdf
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(afex)
+library(BayesFactor)
+library(apa)
+library(papaja)
+library(emmeans)
+library(rstatix)
+options(scipen = 999)
+load("UNL03_proc_data.RData")
+# function to force scientific formatting of numbers (used for large BFs)
+changeSciNot <- function(n) {
+  output <- format(n, scientific = TRUE, digits = 2) #Transforms the number into scientific notation even if small
+  output <- sub("e", "x10^", output) #Replace e with 10^
+  output <- sub("\\+0?", "", output) #Remove + symbol and leading zeros on exponent, if > 1
+  output <- sub("-0?", "-", output) #Leaves - symbol but removes leading zeros on exponent, if < 1
+  output <- paste0(output,"^")
+  # output = strsplit(output, "^", fixed = TRUE)
+  # output = paste0(output[[1]][1],"^", output[[1]][2], "^")
+  output
+}
+
+# function to extract and report BFs with error %s
+report_BF_and_error <- function(BF_in, sci_not = TRUE, hyp = "alt"){
+  
+  if (hyp == "alt") {
+    BF_notation = "BF~10~ = "
+  } else if (hyp == "null") {
+    BF_notation = "BF~01~ = "
+  }
+  
+  if (sci_not == TRUE) {
+    BF_value = changeSciNot(extractBF(BF_in)$bf) # change to sci notation
+  } else {
+    BF_value = round(extractBF(BF_in)$bf,2) # otherwise round
+  }
+  
+  paste0(BF_notation, 
+         BF_value, 
+         " &plusmn; ", 
+         round(100*extractBF(BF_in)$error,2), 
+         "%")
+}
+
+```
+
+```{r, include=FALSE}
+#filter participants that reported not enough attention
+training <- filter(training, !pNum %in% notpassed$pNum)
+test <- filter(test, !pNum %in% notpassed$pNum)
+```
+
+# Training trials
+```{r, include=FALSE}
+#Create probable response variable, as we are using the uncertain condition
+training <- training %>%
+  mutate(prob_response = case_when(cue1 == "A" & cue_o_mouse.clicked_name == "o1_image" ~ 1,
+                                   cue1 == "A" & cue_o_mouse.clicked_name == "o2_image" ~ 0, 
+                                   cue1 == "B" & cue_o_mouse.clicked_name == "o1_image" ~ 0,
+                                   cue1 == "B" & cue_o_mouse.clicked_name == "o2_image" ~ 1))
+```
+
+```{r, include=FALSE}
+#Plot Training accuracy
+MA_training <- training %>% 
+  group_by(block, stage, condition) %>% 
+  summarise(mean_prob_response = mean(prob_response, na.rm = TRUE),
+            se_accuracy = sd(prob_response, na.rm = TRUE)/sqrt(length(prob_response)))
+```
+
+```{r, echo=FALSE}
+ggplot(MA_training) +
+  geom_point(mapping = aes(x = block, y = mean_prob_response, color = factor(condition, levels = c("C-C", "C-U", "U-U")))) +
+  geom_line(mapping = aes(x = block, y = mean_prob_response, color = factor(condition, levels = c("C-C", "C-U", "U-U")))) +
+  geom_errorbar(aes(x= block, y = mean_prob_response, ymin = mean_prob_response-se_accuracy, ymax = mean_prob_response+se_accuracy), color = "black", width=.1,position=position_dodge(0.05)) +
+  geom_vline(xintercept = c(6.5, 10.5), linetype = "dashed", color = "black", size = 1) +  # Vertical separator lines
+  #facet_grid(cols = vars(stage), space = "free_x", scales = "free_x") + 
+  scale_x_continuous(name = "Block", breaks = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)) +
+  scale_y_continuous(name="Proportion of probable responses", limits=c(NA, 1)) +
+  labs(title = "Mean proportion of probable responses on all training phases", color = "Group")+
+  theme_apa()
+```
+
+```{r, include=FALSE}
+#ANOVA
+train <- training %>%
+  group_by (pNum, block, condition) %>%
+  summarise(mean_response = mean(prob_response, na.rm = TRUE))
+train$pNum <- factor(train$pNum)
+train$block <- factor(train$block)
+train$condition <- factor(train$condition)
+ANOVA_train <- aov_car(formula = mean_response ~ condition + Error(pNum/block), data = train)
+print(ANOVA_train)
+
+bay_ANOVA_train <- anovaBF(formula = mean_response ~ condition + block + pNum,
+        data = data.frame(train),
+        whichRandom = "pNum")
+print(bay_ANOVA_train)
+bay_ANOVA_train_int <- bay_ANOVA_train[4]/bay_ANOVA_train[3]
+print(bay_ANOVA_train_int)
+```
+
+```{r, include = FALSE}
+#Simple main effect of group on condition
+SME_group <- train %>%
+  group_by(block) %>%
+  anova_test(mean_response ~ condition) %>%
+  get_anova_table() %>%
+  adjust_pvalue(method = "bonferroni")
+print(SME_group)
+```
+
+```{r, include = FALSE}
+# Marginal means
+ANOVA_train_cond <-emmeans(ANOVA_train, ~condition|block)
+pairs(ANOVA_train_cond, adj = "bonferroni")
+```
+
+A mixed model ANOVA, with the between subjects factor *group* and the within subjects factor *block* found significant both the main effect of *group*, `r apa(ANOVA_train, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_train[2])`, and of *block*,`r apa(ANOVA_train, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_train[1])`) as well as the *group x block* interaction, `r apa(ANOVA_train, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_train_int[1])`. Simple main effects showed a significant effect of the *group* in the blocks 2-10 (*F*(`r SME_group[2,3]` , `r SME_group[2,4]`) \> `r SME_group[2,5]`, *p* \< `r SME_group[2,9]`), but not on the rest of blocks.
+
+```{r, include=FALSE}
+stage1 <- filter(training, stage == "stage1")
+stage2 <- filter(training, stage == "stage2")
+stage3 <- filter(training, stage == "stage3")
+```
+
+## Stage 1 training
+
+```{r, include=FALSE}
+#ANOVA
+resp_s1 <- stage1 %>%
+  group_by (pNum, block, condition) %>%
+  summarise(mean_response = mean(prob_response, na.rm = TRUE))
+resp_s1$block <- factor(resp_s1$block)
+resp_s1$condition <- factor(resp_s1$condition)
+resp_s1$pNum <- factor(resp_s1$pNum)
+ANOVA_resp_s1 <- aov_car(formula = mean_response ~ condition + Error(pNum/block), data = resp_s1)
+print(ANOVA_resp_s1)
+
+bay_ANOVA_resp_s1 <- anovaBF(formula = mean_response ~ condition + block + pNum,
+        data = data.frame(resp_s1),
+        whichRandom = "pNum")
+print(bay_ANOVA_resp_s1)
+bay_ANOVA_resp_s1_int <- bay_ANOVA_resp_s1[4]/bay_ANOVA_resp_s1[3]
+print(bay_ANOVA_resp_s1_int)
+```
+
+```{r, include = FALSE}
+# Marginal means
+ANOVA_s1_cond <-emmeans(ANOVA_resp_s1, ~condition)
+pairs(ANOVA_s1_cond, adj = "bonferroni")
+```
+
+In stage 1 (blocks 1-6), all groups increased in their accuracy. However, groups that received training with certain contingencies in this stage (C-C, C-1U, and C-4U) showed a higher accuracy than group U-U, that received uncertain training on this stage. A mixed methods ANOVA confirmed a significant effect of the *block*, `r apa(ANOVA_resp_s1, effect = "block")`, `r report_BF_and_error(bay_ANOVA_resp_s1[1])` and of the *condition*, `r apa(ANOVA_resp_s1, effect = "condition" )`, `r report_BF_and_error(bay_ANOVA_resp_s1[2])`, but not of the *block x condition* interaction, `r apa(ANOVA_resp_s1, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_resp_s1_int[1])`. Bonferroni corrected pariwise comparisons on the condition factor showed that group U-U showed significant differences with the rest of the groups.
+
+## Stage 2 training
+
+```{r, include=FALSE}
+#ANOVA
+resp_s2 <- stage2 %>%
+  group_by (pNum, block, condition) %>%
+  summarise(mean_response = mean(prob_response, na.rm = TRUE))
+resp_s2$block <- factor(resp_s2$block)
+resp_s2$condition <- factor(resp_s2$condition)
+resp_s2$pNum <- factor(resp_s2$pNum)
+ANOVA_resp_s2 <- aov_car(formula = mean_response ~ condition + Error(pNum/block), data = resp_s2)
+print(ANOVA_resp_s2)
+
+bay_ANOVA_resp_s2 <- anovaBF(formula = mean_response ~ condition + block + pNum,
+        data = data.frame(resp_s2),
+        whichRandom = "pNum")
+print(bay_ANOVA_resp_s2)
+bay_ANOVA_resp_s2_int <- bay_ANOVA_resp_s2[4]/bay_ANOVA_resp_s2[3]
+print(bay_ANOVA_resp_s2_int)
+```
+
+```{r, include=FALSE}
+#Simple comparisons for group
+ANOVA_s2_cond <-emmeans(ANOVA_resp_s2, ~condition)
+pw_ANOVA_s2 <- pairs(ANOVA_s2_cond, adj = "bonferroni")
+print(pw_ANOVA_s2)
+```
+
+In stage 2, groups C-C and C-1U, that still had certain training, continued with a high accuracy, and group U-U, kept with lower accuracy. During this stage, group C-4U, that transitioned into uncertain training, showed a decrease in the accuracy, although maintained a higher level than the U-U group. A mixed model ANOVA find a significant main effect of *group*, `r apa(ANOVA_resp_s2, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_resp_s2[2])`, but not a significant main effect of the *block* (`r apa(ANOVA_resp_s2, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_resp_s2[1])`), nor of the *group x block* interaction, `r apa(ANOVA_resp_s2, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_resp_s2_int[1])`. However, bonferroni corrected pairwise comparisons only showed significant differences between group C-C and U-U groups.
+
+# Stage 3
+
+```{r, include=FALSE}
+#ANOVA
+resp_s3 <- stage3 %>%
+  group_by (pNum, block, condition) %>%
+  summarise(mean_response = mean(prob_response, na.rm = TRUE))
+resp_s3$condition <- factor(resp_s3$condition)
+resp_s3$block <- factor(resp_s3$block)
+resp_s3$pNum <- factor(resp_s3$pNum)
+ANOVA_resp_s3 <- aov_car(formula = mean_response ~ condition + Error(pNum/block), data = resp_s3)
+print(ANOVA_resp_s3)
+
+bay_ANOVA_resp_s3 <- anovaBF(formula = mean_response ~ condition + block,
+        data = data.frame(resp_s3), 
+        whichRandom = "pNum")
+print(bay_ANOVA_resp_s3)
+```
+
+```{r, include=FALSE}
+#Simple comparisons for group
+ANOVA_s3_cond <-emmeans(ANOVA_resp_s3, ~condition)
+pw_ANOVA_s3 <- pairs(ANOVA_s3_cond, adj = "bonferroni")
+print(pw_ANOVA_s3)
+```
+
+In stage 3 (block 10), all groups but group C-C, received uncertain training. Group C-C showed the higher accuracy and group U-U showed the lower accuracy, and groups C-1U and C-4U showed an intermediate level between the other two. A one-way ANOVA for the *group* showed a significant effect, `r apa(ANOVA_resp_s3, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_resp_s3[1])`. However, Bonferroni corrected pairwise comparisons only showed a significant difference between groups C-C and U-U.
+
+# All test trials
+
+```{r, include=FALSE}
+#modify the dataframe to have test cue and outcome columns (an use column outcome as a condition)
+test_long <- test %>%
+  pivot_longer(cols = c(O1_rating, O2_rating, O1_RT, O2_RT), 
+               names_to = c("outcome", ".value"), 
+               names_sep = "_")
+test_long <- test_long %>%
+  mutate(predictiveness = case_when(testcue == "A" | testcue == "B" ~ "P",
+                                    testcue == "X" | testcue == "Y" ~ "NP"),
+         outcome_correct = case_when((testcue == "A" | testcue == "X") & outcome == "O1" ~ 1,
+                                     (testcue == "A" | testcue == "X") & outcome == "O2" ~ 0,
+                                     (testcue == "B" | testcue == "Y") & outcome == "O1" ~ 0,
+                                     (testcue == "B" | testcue == "Y") & outcome == "O2" ~ 1))
+test_long$outcome_correct <- as.character(test_long$outcome_correct)
+```
+
+```{r, include=FALSE}
+#Plot Training accuracy
+MA_test_long <- test_long %>% 
+  group_by(block, stage, condition, predictiveness, outcome_correct) %>% 
+  summarise(mean_rating = mean(rating, na.rm = TRUE),
+            se_rating = sd(rating, na.rm = TRUE)/sqrt(length(rating)))
+```
+
+```{r, echo=FALSE}
+ggplot(data = MA_test_long) +
+  geom_col(mapping = aes(x = condition, y = mean_rating, fill = predictiveness, alpha = outcome_correct), position = position_dodge2()) +
+  geom_errorbar(aes(x= condition, y= mean_rating, ymin = mean_rating - se_rating, ymax = mean_rating + se_rating), width = 0.9, position = position_dodge2()) +
+  scale_x_discrete (name = "Group") +
+  scale_y_continuous(name = "Rating") +
+  coord_cartesian(ylim = c(1, 7)) +
+  scale_fill_discrete(type = c("#AF8DC3", "#7FBF7B"))+
+  facet_wrap(vars(block)) +
+  theme_apa()
+```
+
+```{r, include=FALSE}
+rat_test_long <- test_long %>%
+  group_by (pNum, condition, predictiveness, outcome_correct) %>%
+  summarise(rat = mean(rating, na.rm = TRUE))
+rat_test_long$outcome_correct <- factor(rat_test_long$outcome_correct)
+rat_test_long$predictiveness <- factor(rat_test_long$predictiveness)
+rat_test_long$condition <- factor(rat_test_long$condition)
+rat_test_long$pNum <- factor(rat_test_long$pNum)
+ANOVA_rat_test_long <- aov_car(formula = rat ~ condition + Error(pNum*predictiveness*outcome_correct), data = rat_test_long)
+print(ANOVA_rat_test_long)
+
+bay_ANOVA_rat_test_long <- anovaBF(formula = rat ~ condition*predictiveness*outcome_correct + participant,
+        data = data.frame(rat_test_long),
+        whichRandom = "pNum")
+print(bay_ANOVA_rat_test_long)
+
+bay_ANOVA_rat_test_long_gxp <- bay_ANOVA_rat_test_long[4]/bay_ANOVA_rat_test_long[3]
+print(bay_ANOVA_acc_test_long_gxp)
+```
+## Difference score
+```{r, include=FALSE}
+test <- test %>%
+  mutate(predictiveness = case_when(testcue == "A" | testcue == "B" ~ "P",
+                                    testcue == "X" | testcue == "Y" ~ "NP"),
+         difscore = case_when(testcue == "A" | testcue == "X"  ~ (O1_rating - O2_rating),
+                                                testcue == "B" | testcue == "Y" ~ (O2_rating - O1_rating)))
+```
+
+```{r, include=FALSE}
+MD_test <- test %>%
+  group_by(block, condition, predictiveness) %>%
+  summarise(mean_dif = mean(difscore, na.rm = TRUE),
+            se_dif = sd(difscore, na.rm = TRUE)/sqrt(length(difscore)))
+```
+
+```{r, echo=FALSE}
+ggplot(MD_test) +
+  geom_point(mapping = aes(x = block, y = mean_dif, color = factor(condition, levels = c("C-C", "C-U", "U-U")), shape = predictiveness)) +
+  geom_line(mapping = aes(x = block, y = mean_dif, color = factor(condition, levels = c("C-C", "C-U", "U-U")), linetype = predictiveness)) +
+  geom_errorbar(aes(x= block, y = mean_dif, ymin = mean_dif-se_dif, ymax = mean_dif+se_dif), color = "black", width=.1,position=position_dodge(0.05)) +
+  geom_vline(xintercept = c(3.5, 5.5), linetype = "dashed", color = "black", size = 1) +  # Vertical separator lines
+  scale_x_continuous(name = "Block", breaks = c(1, 2, 3, 4, 5, 6, 7, 8)) +
+  #scale_y_continuous(name="Diference score", limits=c(-6, 6)) +
+  labs(title = "Mean diference scores in all test trials", color = "Group")+
+  theme_apa()
+```
+
