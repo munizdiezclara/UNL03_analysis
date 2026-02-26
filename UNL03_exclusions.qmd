@@ -1,9 +1,6 @@
 ---
-title: "UNL03"
+title: "UNL03_exclusions"
 format: docx
-editor: 
-  markdown: 
-    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
@@ -51,51 +48,11 @@ report_BF_and_error <- function(BF_in, sci_not = TRUE, hyp = "alt"){
 }
 
 ```
-
-+----------------+----------------+----------------+----------------+
-| Group          | Stage 1        | Stage 2        | Stage 3        |
-+:===============+:==============:+:==============:+:==============:+
-| Certain        | AX - O1        | AX - O1        | AX - O1        |
-|                |                |                |                |
-|                | AY - O1        | AY - O1        | BY - O2        |
-|                |                |                |                |
-|                | BX - O2        | BX - O2        |                |
-|                |                |                |                |
-|                | BY - O2        | BY - O2        |                |
-+----------------+----------------+----------------+----------------+
-| Unexpected     | AX - O1        | 0.8 AX - O1 /  | AX - O1        |
-| Uncertain      |                | 0.2 AX - O2    |                |
-|                | AY - O1        |                | BY - O2        |
-|                |                | 0.8 AY - O1 /  |                |
-|                | BX - O2        | 0.2 AY - O2    |                |
-|                |                |                |                |
-|                | BY - O2        | 0.8 BX - O2 /  |                |
-|                |                | 0.2 BX - O1    |                |
-|                |                |                |                |
-|                |                | 0.8 BY - O2 /  |                |
-|                |                | 0.2 BY - O1    |                |
-+----------------+----------------+----------------+----------------+
-| Uncertain      | 0.8 AX - O1 /  | 0.8 AX - O1 /  | AX - O1        |
-|                | 0.2 AX - O2    | 0.2 AX - O2    |                |
-|                |                |                | BY - O2        |
-|                | 0.8 AY - O1 /  | 0.8 AY - O1 /  |                |
-|                | 0.2 AY - O2    | 0.2 AY - O2    |                |
-|                |                |                |                |
-|                | 0.8 BX - O2 /  | 0.8 BX - O2 /  |                |
-|                | 0.2 BX - O1    | 0.2 BX - O1    |                |
-|                |                |                |                |
-|                | 0.8 BY - O2 /  | 0.8 BY - O2 /  |                |
-|                | 0.2 BY - O1    | 0.2 BY - O1    |                |
-+----------------+----------------+----------------+----------------+
-
 ```{r, include=FALSE}
 #filter participants that reported not enough attention
 training <- filter(training, !pNum %in% notpassed$pNum)
 test <- filter(test, !pNum %in% notpassed$pNum)
 ```
-
-# Training trials
-
 ```{r, include=FALSE}
 #Create probable response variable, as we are using the uncertain condition
 training <- training %>%
@@ -103,6 +60,24 @@ training <- training %>%
                                    cue1 == "A" & cue_o_mouse.clicked_name == "o2_image" ~ 0, 
                                    cue1 == "B" & cue_o_mouse.clicked_name == "o1_image" ~ 0,
                                    cue1 == "B" & cue_o_mouse.clicked_name == "o2_image" ~ 1))
+```
+```{r, include=FALSE}
+#rank the participants (grouped by their condition) according to their PPR in block 6
+p_block_avgs <- 
+  training %>% 
+  filter(block == 6) %>% 
+  group_by(pNum, condition) %>% 
+  summarise(mean_acc = mean(prob_response, na.rm = TRUE), 
+            mean_rt = mean(cue_o_mouse.time, na.rm = TRUE)) %>% 
+  group_by(condition) %>% 
+  arrange(desc(mean_acc)) %>% 
+  mutate(condition_rank = 1:n()) %>% #after this, filter the top 20 participants
+  filter(condition_rank <= 20)
+  
+
+#filter from training and test dataframes those that made the rank
+training <- filter(training, pNum %in% p_block_avgs$pNum)
+test <- filter(test, pNum %in% p_block_avgs$pNum)
 ```
 
 ```{r, include=FALSE}
@@ -115,7 +90,6 @@ MA_training <- train %>%
   summarise(mean_prob_response = mean(mean_response, na.rm = TRUE),
             se_accuracy = sd(mean_response, na.rm = TRUE)/sqrt(length(mean_response)))
 ```
-
 ```{r, echo=FALSE}
 ggplot(MA_training) +
   geom_point(mapping = aes(x = block, y = mean_prob_response, color = factor(condition, levels = c("C-C", "C-U", "U-U")))) +
@@ -147,7 +121,6 @@ print(bay_ANOVA_train)
 bay_ANOVA_train_int <- bay_ANOVA_train[4]/bay_ANOVA_train[3]
 print(bay_ANOVA_train_int)
 ```
-
 ```{r, include = FALSE}
 #Simple main effect of group on block
 SME_group <- train %>%
@@ -157,27 +130,15 @@ SME_group <- train %>%
   adjust_pvalue(method = "bonferroni")
 SME_group
 ```
-
 ```{r, include = FALSE}
-#Simple main effect of condition on group
-SME_block <- train %>%
-  group_by(condition) %>%
-  anova_test(mean_response ~ block + Error(pNum/block), effect.size = "pes") %>%
-  get_anova_table() %>%
-  adjust_pvalue(method = "bonferroni")
-SME_block
+#Simple main effect of condition on group  #####NOT WORKING
+#SME_block <- train %>%
+#  group_by(condition) %>%
+#  anova_test(mean_response ~ block + Error(pNum/block), effect.size = "pes") %>%
+#  get_anova_table() %>%
+#  adjust_pvalue(method = "bonferroni")
+#SME_block
 ```
-
-A mixed model ANOVA, with the between subjects factor *group* and the
-within subjects factor *block* found significant both the main effect of
-*block*,`r apa(ANOVA_train, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_train[1])`) and the *group x block*
-interaction, `r apa(ANOVA_train, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_train_int[1])`, but not the main effect
-of *group*, `r apa(ANOVA_train, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_train[2])`. However, simple main
-effects did not show a significant effect of the *block* in any of the
-*groups*.
 
 ```{r, include=FALSE}
 stage1 <- filter(training, stage == "stage1")
@@ -205,7 +166,6 @@ print(bay_ANOVA_resp_s1)
 bay_ANOVA_resp_s1_int <- bay_ANOVA_resp_s1[4]/bay_ANOVA_resp_s1[3]
 print(bay_ANOVA_resp_s1_int)
 ```
-
 ```{r, include=FALSE}
 #Simple comparisons for group
 ANOVA_s1_cond <-emmeans(ANOVA_resp_s1, ~condition)
@@ -213,16 +173,9 @@ pw_ANOVA_s1 <- pairs(ANOVA_s1_cond, adj = "bonferroni")
 print(pw_ANOVA_s1)
 ```
 
-In stage 1, there was a significant effect of the *block*,
-`r apa(ANOVA_resp_s1, effect = "block")`,
-`r report_BF_and_error(bay_ANOVA_resp_s1[1])` and of the *condition*,
-`r apa(ANOVA_resp_s1, effect = "condition" )`,
-`r report_BF_and_error(bay_ANOVA_resp_s1[2])`, but not of the *block x
-condition* interaction,
-`r apa(ANOVA_resp_s1, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_resp_s1_int[1])`. Diffs between C-U and
-U-U.
 
+In stage 1, there was a significant effect of the *block*, `r apa(ANOVA_resp_s1, effect = "block")`, `r report_BF_and_error(bay_ANOVA_resp_s1[1])` and of the *condition*, `r apa(ANOVA_resp_s1, effect = "condition" )`, `r report_BF_and_error(bay_ANOVA_resp_s1[2])`, but not of the *block x condition* interaction, `r apa(ANOVA_resp_s1, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_resp_s1_int[1])`. Diffs between C-C and C-U with U-U.
+ 
 ## Stage 2 training
 
 ```{r, include=FALSE}
@@ -243,14 +196,14 @@ print(bay_ANOVA_resp_s2)
 bay_ANOVA_resp_s2_int <- bay_ANOVA_resp_s2[4]/bay_ANOVA_resp_s2[3]
 print(bay_ANOVA_resp_s2_int)
 ```
+```{r, include=FALSE}
+#Simple comparisons for group
+ANOVA_s2_cond <-emmeans(ANOVA_resp_s2, ~condition)
+pw_ANOVA_s2 <- pairs(ANOVA_s2_cond, adj = "bonferroni")
+print(pw_ANOVA_s2)
+```
 
-No signifcant effects. *group*,
-`r apa(ANOVA_resp_s2, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_resp_s2[2])`, *block*
-(`r apa(ANOVA_resp_s2, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_resp_s2[1])`), *group x block*
-interaction, `r apa(ANOVA_resp_s2, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_resp_s2_int[1])`.
+Significant effect of *group*, `r apa(ANOVA_resp_s2, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_resp_s2[2])`, but not of *block* (`r apa(ANOVA_resp_s2, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_resp_s2[1])`), nor *group x block* interaction, `r apa(ANOVA_resp_s2, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_resp_s2_int[1])`. Differences between groups C-U and U-U with C-C
 
 ## Stage 3
 
@@ -272,13 +225,14 @@ print(bay_ANOVA_resp_s3)
 bay_ANOVA_resp_s3_int <- bay_ANOVA_resp_s3[4]/bay_ANOVA_resp_s3[3]
 print(bay_ANOVA_resp_s3_int)
 ```
+```{r, include=FALSE}
+#Simple comparisons for group
+ANOVA_s3_cond <-emmeans(ANOVA_resp_s3, ~condition)
+pw_ANOVA_s3 <- pairs(ANOVA_s3_cond, adj = "bonferroni")
+print(pw_ANOVA_s3)
+```
 
-no sig *group* `r apa(ANOVA_resp_s3, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_resp_s3[2])`, sig *block*,
-`r apa(ANOVA_resp_s3, effect = "block")`,
-`r report_BF_and_error(bay_ANOVA_resp_s3[1])`, no sig *blockxgroup*
-interaction, `r apa(ANOVA_resp_s3, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_resp_s3_int[1])`.
+Sig *group*  `r apa(ANOVA_resp_s3, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_resp_s3[2])`, sig *block*, `r apa(ANOVA_resp_s3, effect = "block")`, `r report_BF_and_error(bay_ANOVA_resp_s3[1])`, no sig *blockxgroup* interaction, `r apa(ANOVA_resp_s3, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_resp_s3_int[1])`. No significant pairwise differences.
 
 # All test trials
 
@@ -289,7 +243,6 @@ test$O2_rating[is.na(test$O2_rating)] <- 4
 ```
 
 ## Difference score
-
 ```{r, include=FALSE}
 test <- test %>%
   mutate(predictiveness = case_when(testcue == "A" | testcue == "B" ~ "P",
@@ -297,7 +250,6 @@ test <- test %>%
          difscore = case_when(testcue == "A" | testcue == "X"  ~ (O1_rating - O2_rating),
                               testcue == "B" | testcue == "Y" ~ (O2_rating - O1_rating)))
 ```
-
 ```{r, include=FALSE}
 M_test <- test %>%
   group_by(pNum, block, condition, predictiveness) %>%
@@ -307,7 +259,6 @@ MD_test <- M_test %>%
   summarise(mean = mean(mean_dif, na.rm = TRUE),
             se = sd(mean_dif, na.rm = TRUE)/sqrt(length(mean_dif)))
 ```
-
 ```{r, echo=FALSE}
 ggplot(MD_test) +
   geom_point(mapping = aes(x = block, y = mean, color = factor(condition, levels = c("C-C", "C-U", "U-U")), shape = predictiveness)) +
@@ -319,12 +270,8 @@ ggplot(MD_test) +
   labs(title = "Mean diference scores in all test trials", color = "Group")+
   theme_apa()
 ```
-
 ```{r, include=FALSE}
 #ANOVA
-M_test <- test %>%
-  group_by(pNum, block, condition, predictiveness) %>%
-  summarise(mean_dif = mean(difscore, na.rm = TRUE))
 M_test$pNum <- factor(M_test$pNum)
 M_test$block <- factor(M_test$block)
 M_test$condition <- factor(M_test$condition)
@@ -345,7 +292,6 @@ print(bay_ANOVA_test_gxp)
 bay_ANOVA_test_gxbxp <- bay_ANOVA_test[18]/bay_ANOVA_test[17]
 print(bay_ANOVA_test_gxbxp)
 ```
-
 ```{r, include = FALSE}
 # SME of the group::block interaction
 SME_M_test <- M_test %>%
@@ -359,7 +305,6 @@ SME_M_test_group <- SME_M_test %>%
   adjust_pvalue(method = "bonferroni")
 SME_M_test_group
 ```
-
 ```{r, include = FALSE}
 #Simple main effect of condition on group
 SME_M_test_block <- SME_M_test %>%
@@ -370,23 +315,14 @@ SME_M_test_block <- SME_M_test %>%
 SME_M_test_block
 ```
 
-A mixed model ANOVA, with the between subjects factor *group* and the
-within subjects factors *block* and *predictiveness* *group*,
-`r apa(ANOVA_test, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_test[2])`
-*block*,`r apa(ANOVA_test, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_test[1])`, *predictiveness*,
-`r apa(ANOVA_test, effect = "predictiveness" )`,
-`r report_BF_and_error(bay_ANOVA_test[5])` *group x block* interaction,
-`r apa(ANOVA_test, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_test_gxb[1])`, *group x predictiveness*
-interaction, `r apa(ANOVA_test, effect = "condition:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_test_gxp[1])`, *block x predictiveness*
-interaction, `r apa(ANOVA_test, effect = "block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_test_bxp[1])`, *group x block x
-predictiveness* interaction,
-`r apa(ANOVA_test, effect = "condition:block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_test_gxbxp[1])`
+A mixed model ANOVA, with the between subjects factor *group* and the within subjects factors *block* and *predictiveness* 
+*group*, `r apa(ANOVA_test, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_test[2])`
+*block*,`r apa(ANOVA_test, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_test[1])`,
+*predictiveness*, `r apa(ANOVA_test, effect = "predictiveness" )`, `r report_BF_and_error(bay_ANOVA_test[5])` 
+*group x block* interaction, `r apa(ANOVA_test, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_test_gxb[1])`,
+*group x predictiveness* interaction, `r apa(ANOVA_test, effect = "condition:predictiveness")`, `r report_BF_and_error(bay_ANOVA_test_gxp[1])`,
+*block x predictiveness* interaction, `r apa(ANOVA_test, effect = "block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_test_bxp[1])`,
+*group x block x predictiveness* interaction, `r apa(ANOVA_test, effect = "condition:block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_test_gxbxp[1])`
 
 ```{r, include=FALSE}
 stage1_test <- filter(test, stage == "stage1")
@@ -421,7 +357,6 @@ print(bay_ANOVA_s1_test_gxp)
 bay_ANOVA_s1_test_gxbxp <- bay_ANOVA_s1_test[18]/bay_ANOVA_s1_test[17]
 print(bay_ANOVA_s1_test_gxbxp)
 ```
-
 ```{r, include = FALSE}
 # SME of the group::predictiveness interaction
 SME_s1_test <- s1_test %>%
@@ -435,7 +370,6 @@ SME_s1_test_group <- SME_s1_test %>%
   adjust_pvalue(method = "bonferroni")
 SME_s1_test_group
 ```
-
 ```{r, include = FALSE}
 #Simple main effect of predictiveness on group
 SME_s1_test_pred <- SME_s1_test %>%
@@ -445,27 +379,29 @@ SME_s1_test_pred <- SME_s1_test %>%
   adjust_pvalue(method = "bonferroni")
 SME_s1_test_pred
 ```
+```{r, include=FALSE}
+#Simple comparisons for time
+sc_s1_group <- SME_s1_test %>%
+  group_by(predictiveness) %>%
+  pairwise_t_test(
+    mean_dif ~ condition, 
+    paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s1_test, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s1_test[2])`
-*block*,`r apa(ANOVA_s1_test, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s1_test[1])`, *predictiveness*,
-`r apa(ANOVA_s1_test, effect = "predictiveness" )`,
-`r report_BF_and_error(bay_ANOVA_s1_test[5])` *group x block*
-interaction, `r apa(ANOVA_s1_test, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_gxb[1])`, *group x
-predictiveness* interaction,
-`r apa(ANOVA_s1_test, effect = "condition:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_gxp[1])`, *block x
-predictiveness* interaction,
-`r apa(ANOVA_s1_test, effect = "block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_bxp[1])`, *group x block x
-predictiveness* interaction,
-`r apa(ANOVA_s1_test, effect = "condition:block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_gxbxp[1])`
+#Call the summary
+sc_s1_group
+```
 
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s1_test, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s1_test[2])`
+*block*,`r apa(ANOVA_s1_test, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s1_test[1])`,
+*predictiveness*, `r apa(ANOVA_s1_test, effect = "predictiveness" )`, `r report_BF_and_error(bay_ANOVA_s1_test[5])` 
+*group x block* interaction, `r apa(ANOVA_s1_test, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s1_test_gxb[1])`,
+*group x predictiveness* interaction, `r apa(ANOVA_s1_test, effect = "condition:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s1_test_gxp[1])`,
+*block x predictiveness* interaction, `r apa(ANOVA_s1_test, effect = "block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s1_test_bxp[1])`,
+*group x block x predictiveness* interaction, `r apa(ANOVA_s1_test, effect = "condition:block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s1_test_gxbxp[1])`
+ 
 ### Stage 2 test
 
 ```{r, include=FALSE}
@@ -493,14 +429,12 @@ print(bay_ANOVA_s2_test_gxp)
 bay_ANOVA_s2_test_gxbxp <- bay_ANOVA_s2_test[18]/bay_ANOVA_s2_test[17]
 print(bay_ANOVA_s2_test_gxbxp)
 ```
-
 ```{r, include=FALSE}
 #Simple comparisons for group
 ANOVA_s2_cond <-emmeans(ANOVA_s2_test, ~condition)
 pw_ANOVA_s2 <- pairs(ANOVA_s2_cond, adj = "bonferroni")
 print(pw_ANOVA_s2)
 ```
-
 ```{r, include = FALSE}
 # SME of the group::predictiveness interaction
 SME_s2_test <- s2_test %>%
@@ -514,7 +448,6 @@ SME_s2_test_group <- SME_s2_test %>%
   adjust_pvalue(method = "bonferroni")
 SME_s2_test_group
 ```
-
 ```{r, include = FALSE}
 #Simple main effect of predictiveness on group
 SME_s2_test_pred <- SME_s2_test %>%
@@ -524,26 +457,28 @@ SME_s2_test_pred <- SME_s2_test %>%
   adjust_pvalue(method = "bonferroni")
 SME_s2_test_pred
 ```
+```{r, include=FALSE}
+#Simple comparisons for time
+sc_s2_group <- SME_s2_test %>%
+  group_by(predictiveness) %>%
+  pairwise_t_test(
+    mean_dif ~ condition, 
+    paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s2_test, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s2_test[2])`
-*block*,`r apa(ANOVA_s2_test, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s2_test[1])`, *predictiveness*,
-`r apa(ANOVA_s2_test, effect = "predictiveness" )`,
-`r report_BF_and_error(bay_ANOVA_s2_test[5])` *group x block*
-interaction, `r apa(ANOVA_s2_test, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_gxb[1])`, *group x
-predictiveness* interaction,
-`r apa(ANOVA_s2_test, effect = "condition:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_gxp[1])`, *block x
-predictiveness* interaction,
-`r apa(ANOVA_s2_test, effect = "block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_bxp[1])`, *group x block x
-predictiveness* interaction,
-`r apa(ANOVA_s2_test, effect = "condition:block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_gxbxp[1])`
+#Call the summary
+sc_s2_group
+```
+
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s2_test, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s2_test[2])`
+*block*,`r apa(ANOVA_s2_test, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s2_test[1])`,
+*predictiveness*, `r apa(ANOVA_s2_test, effect = "predictiveness" )`, `r report_BF_and_error(bay_ANOVA_s2_test[5])` 
+*group x block* interaction, `r apa(ANOVA_s2_test, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s2_test_gxb[1])`,
+*group x predictiveness* interaction, `r apa(ANOVA_s2_test, effect = "condition:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s2_test_gxp[1])`,
+*block x predictiveness* interaction, `r apa(ANOVA_s2_test, effect = "block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s2_test_bxp[1])`,
+*group x block x predictiveness* interaction, `r apa(ANOVA_s2_test, effect = "condition:block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s2_test_gxbxp[1])`
 
 ### Stage 3 test
 
@@ -572,7 +507,6 @@ print(bay_ANOVA_s3_test_gxp)
 bay_ANOVA_s3_test_gxbxp <- bay_ANOVA_s3_test[18]/bay_ANOVA_s3_test[17]
 print(bay_ANOVA_s3_test_gxbxp)
 ```
-
 ```{r, include = FALSE}
 # SME of the group::predictiveness interaction
 SME_s3_test <- s3_test %>%
@@ -586,7 +520,6 @@ SME_s3_test_group <- SME_s3_test %>%
   adjust_pvalue(method = "bonferroni")
 SME_s3_test_group
 ```
-
 ```{r, include = FALSE}
 #Simple main effect of predictiveness on group
 SME_s3_test_pred <- SME_s3_test %>%
@@ -596,29 +529,35 @@ SME_s3_test_pred <- SME_s3_test %>%
   adjust_pvalue(method = "bonferroni")
 SME_s3_test_pred
 ```
+```{r, include=FALSE}
+#Simple comparisons for time
+sc_s3_group <- SME_s3_test %>%
+  group_by(predictiveness) %>%
+  pairwise_t_test(
+    mean_dif ~ condition, 
+    paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s3_test, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s3_test[2])`
-*block*,`r apa(ANOVA_s3_test, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s3_test[1])`, *predictiveness*,
-`r apa(ANOVA_s3_test, effect = "predictiveness" )`,
-`r report_BF_and_error(bay_ANOVA_s3_test[5])` *group x block*
-interaction, `r apa(ANOVA_s3_test, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_gxb[1])`, *group x
-predictiveness* interaction,
-`r apa(ANOVA_s3_test, effect = "condition:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_gxp[1])`, *block x
-predictiveness* interaction,
-`r apa(ANOVA_s3_test, effect = "block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_bxp[1])`, *group x block x
-predictiveness* interaction,
-`r apa(ANOVA_s3_test, effect = "condition:block:predictiveness")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_gxbxp[1])`
+#Call the summary
+sc_s3_group
+```
 
-## Non-predictive
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s3_test, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s3_test[2])`
+*block*,`r apa(ANOVA_s3_test, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s3_test[1])`,
+*predictiveness*, `r apa(ANOVA_s3_test, effect = "predictiveness" )`, `r report_BF_and_error(bay_ANOVA_s3_test[5])` 
+*group x block* interaction, `r apa(ANOVA_s3_test, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s3_test_gxb[1])`,
+*group x predictiveness* interaction, `r apa(ANOVA_s3_test, effect = "condition:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s3_test_gxp[1])`,
+*block x predictiveness* interaction, `r apa(ANOVA_s3_test, effect = "block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s3_test_bxp[1])`,
+*group x block x predictiveness* interaction, `r apa(ANOVA_s3_test, effect = "condition:block:predictiveness")`, `r report_BF_and_error(bay_ANOVA_s3_test_gxbxp[1])`
 
+```{r, include=FALSE}
+test_NP <- filter(test, predictiveness == "NP")
+test_P <- filter(test, predictiveness == "P")
+```
+
+# Non-predictive
 ```{r, include=FALSE}
 #ANOVA
 M_test_NP <- test_NP %>%
@@ -637,15 +576,10 @@ print(bay_ANOVA_test_NP)
 bay_ANOVA_test_NP_gxb <- bay_ANOVA_test_NP[4]/bay_ANOVA_test_NP[3]
 print(bay_ANOVA_test_NP_gxb)
 ```
-
-A mixed model ANOVA, with the between subjects factor *group* and the
-within subjects factors *block* and *predictiveness* *group*,
-`r apa(ANOVA_test_NP, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_test_NP[2])`
-*block*,`r apa(ANOVA_test_NP, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_test_NP[1])`, *group x block*
-interaction, `r apa(ANOVA_test_NP, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_test_NP_gxb[1])`,
+A mixed model ANOVA, with the between subjects factor *group* and the within subjects factors *block* and *predictiveness* 
+*group*, `r apa(ANOVA_test_NP, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_test_NP[2])`
+*block*,`r apa(ANOVA_test_NP, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_test_NP[1])`,
+*group x block* interaction, `r apa(ANOVA_test_NP, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_test_NP_gxb[1])`,
 
 ```{r, include=FALSE}
 stage1_test_NP <- filter(test_NP, stage == "stage1")
@@ -674,15 +608,11 @@ bay_ANOVA_s1_test_NP_gxb <- bay_ANOVA_s1_test_NP[4]/bay_ANOVA_s1_test_NP[3]
 print(bay_ANOVA_s1_test_NP_gxb)
 ```
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* *group*,
-`r apa(ANOVA_s1_test_NP, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_NP[2])`
-*block*,`r apa(ANOVA_s1_test_NP, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s1_test_NP[1])`, *group x block*
-interaction, `r apa(ANOVA_s1_test_NP, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_NP_gxb[1])`,
-
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block*
+*group*, `r apa(ANOVA_s1_test_NP, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s1_test_NP[2])`
+*block*,`r apa(ANOVA_s1_test_NP, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s1_test_NP[1])`,
+*group x block* interaction, `r apa(ANOVA_s1_test_NP, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s1_test_NP_gxb[1])`,
+ 
 ### Stage 2 test
 
 ```{r, include=FALSE}
@@ -704,14 +634,10 @@ bay_ANOVA_s2_test_NP_gxb <- bay_ANOVA_s2_test_NP[4]/bay_ANOVA_s2_test_NP[3]
 print(bay_ANOVA_s2_test_NP_gxb)
 ```
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s2_test_NP, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_NP[2])`
-*block*,`r apa(ANOVA_s2_test_NP, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s2_test_NP[1])`, *group x block*
-interaction, `r apa(ANOVA_s2_test_NP, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_NP_gxb[1])`,
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s2_test_NP, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s2_test_NP[2])`
+*block*,`r apa(ANOVA_s2_test_NP, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s2_test_NP[1])`,
+*group x block* interaction, `r apa(ANOVA_s2_test_NP, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s2_test_NP_gxb[1])`,
 
 ### Stage 3 test
 
@@ -742,17 +668,13 @@ pw_ANOVA_s3 <- pairs(ANOVA_s3_cond, adj = "bonferroni")
 print(pw_ANOVA_s3)
 ```
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s3_test_NP, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_NP[2])`
-*block*,`r apa(ANOVA_s3_test_NP, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s3_test_NP[1])`, *group x block*
-interaction, `r apa(ANOVA_s3_test_NP, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_NP_gxb[1])`,
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s3_test_NP, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s3_test_NP[2])`
+*block*,`r apa(ANOVA_s3_test_NP, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s3_test_NP[1])`, 
+*group x block* interaction, `r apa(ANOVA_s3_test_NP, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s3_test_NP_gxb[1])`,
+
 
 ## Predictive
-
 ```{r, include=FALSE}
 #ANOVA
 M_test_P <- test_P %>%
@@ -781,7 +703,6 @@ SME_test_P_group <- M_test_P %>%
   adjust_pvalue(method = "bonferroni")
 SME_test_P_group
 ```
-
 ```{r, include = FALSE}
 #Simple main effect of condition on group
 SME_test_P_block <- M_test_P %>%
@@ -792,14 +713,10 @@ SME_test_P_block <- M_test_P %>%
 SME_test_P_block
 ```
 
-A mixed model ANOVA, with the between subjects factor *group* and the
-within subjects factors *block* and *predictiveness* *group*,
-`r apa(ANOVA_test_P, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_test_P[2])`
-*block*,`r apa(ANOVA_test_P, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_test_P[1])`, *group x block*
-interaction, `r apa(ANOVA_test_P, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_test_P_gxb[1])`,
+A mixed model ANOVA, with the between subjects factor *group* and the within subjects factors *block* and *predictiveness* 
+*group*, `r apa(ANOVA_test_P, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_test_P[2])`
+*block*,`r apa(ANOVA_test_P, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_test_P[1])`,
+*group x block* interaction, `r apa(ANOVA_test_P, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_test_P_gxb[1])`,
 
 ```{r, include=FALSE}
 stage1_test_P <- filter(test_P, stage == "stage1")
@@ -827,21 +744,16 @@ print(bay_ANOVA_s1_test_P)
 bay_ANOVA_s1_test_P_gxb <- bay_ANOVA_s1_test_P[4]/bay_ANOVA_s1_test_P[3]
 print(bay_ANOVA_s1_test_P_gxb)
 ```
-
 ```{r, include=FALSE}
 ANOVA_s1_test_P_int <- emmeans(ANOVA_s1_test_P, ~condition)
 pairs(ANOVA_s1_test_P_int, adj = "bonferroni")
 ```
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s1_test_P, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_P[2])`
-*block*,`r apa(ANOVA_s1_test_P, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s1_test_P[1])`, *group x block*
-interaction, `r apa(ANOVA_s1_test_P, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s1_test_P_gxb[1])`,
-
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s1_test_P, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s1_test_P[2])`
+*block*,`r apa(ANOVA_s1_test_P, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s1_test_P[1])`, 
+*group x block* interaction, `r apa(ANOVA_s1_test_P, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s1_test_P_gxb[1])`,
+ 
 ### Stage 2 test
 
 ```{r, include=FALSE}
@@ -870,14 +782,10 @@ pw_ANOVA_s2 <- pairs(ANOVA_s2_cond, adj = "bonferroni")
 print(pw_ANOVA_s2)
 ```
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s2_test_P, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_P[2])`
-*block*,`r apa(ANOVA_s2_test_P, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s2_test_P[1])`, *group x block*
-interaction, `r apa(ANOVA_s2_test_P, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s2_test_P_gxb[1])`,
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s2_test_P, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s2_test_P[2])`
+*block*,`r apa(ANOVA_s2_test_P, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s2_test_P[1])`,
+*group x block* interaction, `r apa(ANOVA_s2_test_P, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s2_test_P_gxb[1])`,
 
 ### Stage 3 test
 
@@ -900,11 +808,7 @@ bay_ANOVA_s3_test_P_gxb <- bay_ANOVA_s3_test_P[4]/bay_ANOVA_s3_test_P[3]
 print(bay_ANOVA_s3_test_P_gxb)
 ```
 
-Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U),
-and within factors *block* and *predictiveness* (P vs NP) *group*,
-`r apa(ANOVA_s3_test_P, effect = "condition")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_P[2])`
-*block*,`r apa(ANOVA_s3_test_P, effect = "block" )`,
-`r report_BF_and_error(bay_ANOVA_s3_test_P[1])`, *group x block*
-interaction, `r apa(ANOVA_s3_test_P, effect = "condition:block")`,
-`r report_BF_and_error(bay_ANOVA_s3_test_P_gxb[1])`
+Mixed model ANOVA with the between factor *group* (C-C, C-U and U-U), and within factors *block* and *predictiveness* (P vs NP)
+*group*, `r apa(ANOVA_s3_test_P, effect = "condition")`, `r report_BF_and_error(bay_ANOVA_s3_test_P[2])`
+*block*,`r apa(ANOVA_s3_test_P, effect = "block" )`, `r report_BF_and_error(bay_ANOVA_s3_test_P[1])`,
+*group x block* interaction, `r apa(ANOVA_s3_test_P, effect = "condition:block")`, `r report_BF_and_error(bay_ANOVA_s3_test_P_gxb[1])`
